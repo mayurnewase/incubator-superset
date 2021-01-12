@@ -996,7 +996,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         granularity,
         time_grain_sqla,
         select_expressions,
-        groupby_expression_with_timestamp,
+        groupby_expressions,
         columns_by_name,
         is_timeseries,
         db_engine_spec,
@@ -1004,6 +1004,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         to_dttm,
         time_range_endpoints,
     ):
+        groupby_expression_with_timestamp = OrderedDict(groupby_expressions.items())
         if granularity:
             dttm_col = columns_by_name[granularity]
             time_grain = time_grain_sqla
@@ -1181,7 +1182,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         columns,
         groupby,
         main_metric_expression,
-        groupby_expressions_with_timestamp,
+        groupby_expressions,
         query_table,
         inner_from_dttm,
         inner_to_dttm,
@@ -1210,8 +1211,8 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             )
             inner_groupby_exprs = []
             inner_select_exprs = []
-            print("grp expressions with ts ", groupby_expressions_with_timestamp)
-            for gby_name, gby_obj in groupby_expressions_with_timestamp.items():
+            print("grp expressions with ts ", groupby_expressions)
+            for gby_name, gby_obj in groupby_expressions.items():
                 inner = self.make_sqla_column_compatible(gby_obj, gby_name + "__")
                 inner_groupby_exprs.append(inner)
                 inner_select_exprs.append(inner)
@@ -1245,7 +1246,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             subq = subq.limit(timeseries_limit)
 
             on_clause = []
-            for gby_name, gby_obj in groupby_expressions_with_timestamp.items():
+            for gby_name, gby_obj in groupby_expressions.items():
                 # in this case the column name, not the alias, needs to be
                 # conditionally mutated, as it refers to the column alias in
                 # the inner query
@@ -1286,10 +1287,10 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             dimensions = [
                 c
                 for c in result.df.columns
-                if c not in metrics and c in groupby_expressions_with_timestamp
+                if c not in metrics and c in groupby_expressions
             ]
             where_clause = self._get_top_groups(
-                result.df, dimensions, groupby_expressions_with_timestamp
+                result.df, dimensions, groupby_expressions
             )
 
         return query_table, where_clause, prequeries
@@ -1396,7 +1397,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             outer,
             select_expressions,
             metric_expressions,
-            groupby_expressions_with_timestamp,
+            groupby_expressions,
         ) = self.get_expressions(
             is_sip_38,
             metrics,
@@ -1420,7 +1421,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             granularity,
             extras.get("time_grain_sqla"),
             select_expressions,
-            groupby_expressions_with_timestamp,
+            groupby_expressions,
             columns_by_name,
             is_timeseries,
             db_engine_spec,
@@ -1488,14 +1489,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             timeseries_limit: 0,
             time_groupby_inline: false
         """
-        print(
-            "books ",
-            is_timeseries,
-            timeseries_limit,
-            time_groupby_inline,
-            columns,
-            groupby,
-        )
+        
         prequeries: List[str] = []
         if (
             is_timeseries  # pylint: disable=too-many-boolean-expressions
@@ -1509,7 +1503,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                 columns,
                 groupby,
                 main_metric_expression,
-                groupby_expressions_with_timestamp,
+                groupby_expressions,
                 query_table,
                 inner_from_dttm,
                 inner_to_dttm,
