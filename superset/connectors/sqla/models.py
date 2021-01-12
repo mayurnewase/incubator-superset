@@ -1199,7 +1199,6 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         metrics,
         granularity,
     ):
-
         prequeries: List[str] = []
 
         if self.database.db_engine_spec.allows_joins:
@@ -1211,6 +1210,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             )
             inner_groupby_exprs = []
             inner_select_exprs = []
+            print("grp expressions with ts ", groupby_expressions_with_timestamp)
             for gby_name, gby_obj in groupby_expressions_with_timestamp.items():
                 inner = self.make_sqla_column_compatible(gby_obj, gby_name + "__")
                 inner_groupby_exprs.append(inner)
@@ -1223,12 +1223,17 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                 inner_to_dttm or to_dttm,
                 time_range_endpoints,
             )
+            print("\n inner from dttm ", inner_from_dttm, "\n", from_dttm)
+            print("inner to ", inner_to_dttm, "\n ", to_dttm)
+            print("\ntime range ", time_range_endpoints)
+
             print("where ", where_clause, "inner f", inner_time_filter)
             # where []
             # inner_time_filter [<sqlalchemy.sql.elements.BooleanClauseList object at 0x7f9fcc46c150>]
             subq = subq.where(and_(*(where_clause + [inner_time_filter])))
             subq = subq.group_by(*inner_groupby_exprs)
-            print("subquery ", subq)
+            print("\n", inner_groupby_exprs)
+            print("\nsubquery ", subq)
 
             ob = inner_main_metric_expr
             if timeseries_limit_metric:
