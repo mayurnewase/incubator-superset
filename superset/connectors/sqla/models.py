@@ -1224,10 +1224,11 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                 time_range_endpoints,
             )
             print("where ", where_clause, "inner f", inner_time_filter)
-            # ds >= '1921-01-12 00:00:00.000000' AND ds < '2021-01-12 09:30:04.000000'
-            # ds >= '1921-01-12 00:00:00.000000' AND ds < '2021-01-12 09:30:04.000000'
+            # where []
+            # inner_time_filter [<sqlalchemy.sql.elements.BooleanClauseList object at 0x7f9fcc46c150>]
             subq = subq.where(and_(*(where_clause + [inner_time_filter])))
             subq = subq.group_by(*inner_groupby_exprs)
+            print("subquery ", subq)
 
             ob = inner_main_metric_expr
             if timeseries_limit_metric:
