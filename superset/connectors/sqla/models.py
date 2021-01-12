@@ -912,6 +912,9 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         return {m.metric_name: m for m in self.metrics}
 
     def _get_metric_expressions(self, metrics, columns_by_name, metrics_by_name):
+        """
+        returns metric expressions columns like sum(num)
+        """
         metric_expressions = []
         for metric in metrics:
             if utils.is_adhoc_metric(metric):
@@ -928,6 +931,9 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         return metric_expressions
 
     def _get_main_metric_expression(self, metric_expressions):
+        """
+        from list of metric expressions,returns first one
+        """
         if metric_expressions:
             main_metric_expression = metric_expressions[0]
         else:
@@ -937,7 +943,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             )
         return main_metric_expression
 
-    def get_expressions(
+    def _get_expressions(
         self,
         is_sip_38,
         metrics,
@@ -948,8 +954,12 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         extras,
         metric_expressions,
     ):
+        """
+        generate select, groupby expressions
+        eg: select expresions is list of elements of columns
+        """
         select_expressions: List[Column] = []
-        groupby_exprs_sans_timestamp = OrderedDict()
+        groupby_exprssions = OrderedDict()
 
         if (is_sip_38 and metrics and columns) or (not is_sip_38 and groupby):
             # dedup columns while preserving order
@@ -971,7 +981,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                     outer = literal_column(f"({selected})")
                     outer = self.make_sqla_column_compatible(outer, selected)
 
-                groupby_exprs_sans_timestamp[
+                groupby_exprssions[
                     outer.name
                 ] = outer  # outer -> elements.Label object of columns name and state
                 select_expressions.append(outer)
@@ -988,10 +998,10 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             outer,
             select_expressions,
             metric_expressions,
-            groupby_exprs_sans_timestamp,
+            groupby_exprssions,
         )
 
-    def get_time_filters(
+    def _get_temporal_info(
         self,
         granularity,
         time_grain_sqla,
@@ -1004,16 +1014,22 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         to_dttm,
         time_range_endpoints,
     ):
-        groupby_expression_with_timestamp = OrderedDict(groupby_expressions.items())
+        """
+        return:
+            time_filter: []
+            select_expression : appends timestamp expressions to it
+            groupby_expressions_with_ts: groupby with temporal columns
+        """
+        groupby_expressions_with_ts = OrderedDict(groupby_expressions.items())
+        time_filters = []
         if granularity:
             dttm_col = columns_by_name[granularity]
             time_grain = time_grain_sqla
-            time_filters = []
 
             if is_timeseries:
                 timestamp = dttm_col.get_timestamp_expression(time_grain)
                 select_expressions += [timestamp]
-                groupby_expression_with_timestamp[timestamp.name] = timestamp
+                groupby_expressions_with_ts[timestamp.name] = timestamp
 
             # Use main dttm column to support index with secondary dttm columns.
             if (
@@ -1029,34 +1045,20 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             time_filters.append(
                 dttm_col.get_time_filter(from_dttm, to_dttm, time_range_endpoints)
             )
-        return time_filters, select_expressions, groupby_expression_with_timestamp
+        return time_filters, select_expressions, groupby_expressions_with_ts
 
-    def get_expected_labels_from_select(self, select_expressions):
+    def _get_expected_labels_from_select(self, select_expressions):
         return [
             c._df_label_expected  # pylint: disable=protected-access
             for c in select_expressions
         ]
 
-    def get_query_with_group_by_expression(
-        self, query, is_sip_38, metrics, columns, groupby_expressions_with_timestamp
-    ):
-        if (is_sip_38 and metrics) or (not is_sip_38 and not columns):
-            query = query.group_by(*groupby_expressions_with_timestamp.values())
-        return query
+    def _get_where_clause(self, filter_, columns_by_name, template_processor, extra_where, granularity, time_filters):
+        """
+        generates complete where clause from filters and columns
+        """
 
-    def get_where_and_having_clause(
-        self,
-        filter_,
-        columns_by_name,
-        template_processor,
-        granularity,
-        extra_where,
-        extra_having,
-        time_filters,
-    ):
-        # TODO: break this function
-        where_clause_and = []
-        having_clause_and = []
+        where_clause = []
 
         for flt in filter_:  # type: ignore
             if not all([flt.get(s) for s in ["col", "op"]]):
@@ -1087,31 +1089,32 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                         )
                     if op == utils.FilterOperator.NOT_IN.value:
                         cond = ~cond
-                    where_clause_and.append(cond)
+                    where_clause.append(cond)
                 else:
                     if col_obj.is_numeric:
                         eq = utils.cast_to_num(flt["val"])
+                    
                     if op == utils.FilterOperator.EQUALS.value:
-                        where_clause_and.append(col_obj.get_sqla_col() == eq)
+                        where_clause.append(col_obj.get_sqla_col() == eq)
                     elif op == utils.FilterOperator.NOT_EQUALS.value:
-                        where_clause_and.append(col_obj.get_sqla_col() != eq)
+                        where_clause.append(col_obj.get_sqla_col() != eq)
                     elif op == utils.FilterOperator.GREATER_THAN.value:
-                        where_clause_and.append(col_obj.get_sqla_col() > eq)
+                        where_clause.append(col_obj.get_sqla_col() > eq)
                     elif op == utils.FilterOperator.LESS_THAN.value:
-                        where_clause_and.append(col_obj.get_sqla_col() < eq)
+                        where_clause.append(col_obj.get_sqla_col() < eq)
                     elif op == utils.FilterOperator.GREATER_THAN_OR_EQUALS.value:
-                        where_clause_and.append(col_obj.get_sqla_col() >= eq)
+                        where_clause.append(col_obj.get_sqla_col() >= eq)
                     elif op == utils.FilterOperator.LESS_THAN_OR_EQUALS.value:
-                        where_clause_and.append(col_obj.get_sqla_col() <= eq)
+                        where_clause.append(col_obj.get_sqla_col() <= eq)
                     elif op == utils.FilterOperator.LIKE.value:
-                        where_clause_and.append(col_obj.get_sqla_col().like(eq))
+                        where_clause.append(col_obj.get_sqla_col().like(eq))
                     elif op == utils.FilterOperator.IS_NULL.value:
-                        where_clause_and.append(
+                        where_clause.append(
                             col_obj.get_sqla_col()  # pylint: disable=singleton-comparison
                             == None
                         )
                     elif op == utils.FilterOperator.IS_NOT_NULL.value:
-                        where_clause_and.append(
+                        where_clause.append(
                             col_obj.get_sqla_col()  # pylint: disable=singleton-comparison
                             != None
                         )
@@ -1119,11 +1122,12 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                         raise QueryObjectValidationError(
                             _("Invalid filter operation type: %(op)s", op=op)
                         )
+        
         if is_feature_enabled("ROW_LEVEL_SECURITY"):
-            where_clause_and += self._get_sqla_row_level_filters(template_processor)
+            where_clause += self._get_sqla_row_level_filters(template_processor)
 
-        print("\n1 whare", where_clause_and)
-        print("\ntime filter ", time_filters)
+        if granularity:
+            where_clause += time_filters
 
         if extra_where:
             try:
@@ -1135,8 +1139,15 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                         msg=ex.message,
                     )
                 )
-            where_clause_and += [sa.text("({})".format(where))]
+            where_clause += [sa.text("({})".format(where))]
 
+        return where_clause
+
+    def _get_having_clause(self, extra_having, template_processor):
+        """
+        generate complete having clause from extra arg 'have'
+        """
+        having_clause = []
         if extra_having:
             try:
                 having = template_processor.process_template(extra_having)
@@ -1147,15 +1158,16 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                         msg=ex.message,
                     )
                 )
-            having_clause_and += [sa.text("({})".format(having))]
-        if granularity:
-            where_clause_and = time_filters + where_clause_and
-
-        return where_clause_and, having_clause_and
-
+            having_clause += [sa.text("({})".format(having))]
+        return having_clause
+    
     def _get_order_by_clause(self, orderby, metric_expressions, columns_by_name):
+        """
+        generate complete order by clause
         # To ensure correct handling of the ORDER BY labeling we need to reference the
         # metric instance if defined in the SELECT clause.
+        """
+        
         metric_expressions_by_label = {
             m._label: m for m in metric_expressions  # pylint: disable=protected-access
         }
@@ -1175,7 +1187,45 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
 
             return direction(col)
 
-    def _get_where_clause(
+    def _get_inner_expressions(self, groupby_expressions, inner_main_metric_expr):
+        """
+        generate select and groupby expressions for inner query
+        """
+        inner_select_expressions = []
+        inner_groupby_expressions = []
+        for gby_name, gby_obj in groupby_expressions.items():
+            inner = self.make_sqla_column_compatible(gby_obj, gby_name + "__")
+            inner_groupby_expressions.append(inner)
+            inner_select_expressions.append(inner)
+
+        inner_select_expressions += [inner_main_metric_expr]
+        return inner_select_expressions, inner_groupby_expressions
+
+    def _get_subquery(self, inner_select_expressions, query_table, inner_main_metric_expr, where_clause,
+    inner_time_filter, inner_groupby_expressions, timeseries_limit_metric, timeseries_limit, metrics_by_name, columns_by_name, order_desc):
+        """
+        generate complete subquery
+        """
+        subquery = select(inner_select_expressions).select_from(query_table)
+        subquery = subquery.where(and_(*(where_clause + [inner_time_filter])))
+        subquery = subquery.group_by(*inner_groupby_expressions)
+        #subquery: SELECT name AS name__, sum(num) AS mme_inner__ 
+            #FROM birth_names 
+            #WHERE ds >= '1921-01-12 00:00:00.000000' AND ds < '2021-01-12 11:18:36.000000' 
+            #AND ds >= '1921-01-12 00:00:00.000000' AND ds < '2021-01-12 11:18:36.000000' 
+            #GROUP BY name
+
+        order_direction_column = inner_main_metric_expr
+        if timeseries_limit_metric:
+            order_direction_column = self._get_timeseries_orderby(
+                timeseries_limit_metric, metrics_by_name, columns_by_name
+            )
+        direction = desc if order_desc else asc
+        subquery = subquery.order_by(direction(order_direction_column))
+        subquery = subquery.limit(timeseries_limit)
+        return subquery
+
+    def _get_timeseries_params(
         self,
         timeseries_limit,
         is_sip_38,
@@ -1200,6 +1250,10 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         metrics,
         granularity,
     ):
+        """
+        TODO: what this function does
+        looks like creates inner query
+        """
         prequeries: List[str] = []
 
         if self.database.db_engine_spec.allows_joins:
@@ -1209,41 +1263,21 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             inner_main_metric_expr = self.make_sqla_column_compatible(
                 main_metric_expression, "mme_inner__"
             )
-            inner_groupby_exprs = []
-            inner_select_exprs = []
-            print("grp expressions with ts ", groupby_expressions)
-            for gby_name, gby_obj in groupby_expressions.items():
-                inner = self.make_sqla_column_compatible(gby_obj, gby_name + "__")
-                inner_groupby_exprs.append(inner)
-                inner_select_exprs.append(inner)
+            
+            inner_select_expressions, inner_groupby_expressions = self._get_inner_expressions(
+                groupby_expressions, inner_main_metric_expr)
 
-            inner_select_exprs += [inner_main_metric_expr]
-            subq = select(inner_select_exprs).select_from(query_table)
             inner_time_filter = dttm_col.get_time_filter(
                 inner_from_dttm or from_dttm,
                 inner_to_dttm or to_dttm,
                 time_range_endpoints,
             )
-            print("\n inner from dttm ", inner_from_dttm, "\n", from_dttm)
-            print("inner to ", inner_to_dttm, "\n ", to_dttm)
-            print("\ntime range ", time_range_endpoints)
-
-            print("where ", where_clause, "inner f", inner_time_filter)
+            
             # where []
             # inner_time_filter [<sqlalchemy.sql.elements.BooleanClauseList object at 0x7f9fcc46c150>]
-            subq = subq.where(and_(*(where_clause + [inner_time_filter])))
-            subq = subq.group_by(*inner_groupby_exprs)
-            print("\n", inner_groupby_exprs)
-            print("\nsubquery ", subq)
-
-            ob = inner_main_metric_expr
-            if timeseries_limit_metric:
-                ob = self._get_timeseries_orderby(
-                    timeseries_limit_metric, metrics_by_name, columns_by_name
-                )
-            direction = desc if order_desc else asc
-            subq = subq.order_by(direction(ob))
-            subq = subq.limit(timeseries_limit)
+            subquery = self._get_subquery(inner_select_expressions, query_table, inner_main_metric_expr,
+                where_clause,inner_time_filter, inner_groupby_expressions, timeseries_limit_metric,
+                timeseries_limit, metrics_by_name, columns_by_name, order_desc)
 
             on_clause = []
             for gby_name, gby_obj in groupby_expressions.items():
@@ -1253,7 +1287,8 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
                 col_name = db_engine_spec.make_label_compatible(gby_name + "__")
                 on_clause.append(gby_obj == column(col_name))
 
-            query_table = query_table.join(subq.alias(), and_(*on_clause))
+            query_table = query_table.join(subquery.alias(), and_(*on_clause))
+        
         else:
             if timeseries_limit_metric:
                 orderby = [
@@ -1317,7 +1352,23 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         extras: Optional[Dict[str, Any]] = None,
         order_desc: bool = True,
     ) -> SqlaQuery:
-        """Querying any sqla table from this common interface"""
+        """Querying any sqla table from this common interface
+        input eg:
+             sip  False
+             metrics  [{'aggregate': 'SUM', 'column': {'column_name': 'num', 'type': 'BIGINT'},
+                 'expressionType': 'SIMPLE', 'label': 'Births', 'optionName': 'metric_11'}]
+             cols  None
+             groupby  ['name', 'state']
+             granularity: ds
+             extras: {'druid_time_origin': '', 'having': '', 'having_druid': [], 'time_grain_sqla': 'P1D',
+                'time_range_endpoints': (<TimeRangeEndpoint.INCLUSIVE: 'inclusive'>,
+                <TimeRangeEndpoint.EXCLUSIVE: 'exclusive'>), 'where': ''}
+
+            is_timeseries: false
+            timeseries_limit: 0,
+            time_groupby_inline: false
+        
+        """
 
         extra_cache_keys: List[Any] = []
         is_sip_38 = is_feature_enabled("SIP_38_VIZ_REARCHITECTURE")
@@ -1360,17 +1411,8 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         time_groupby_inline = db_engine_spec.time_groupby_inline
 
         columns_by_name: Dict[str, TableColumn] = self._get_columns_by_name()
-        # {'ds': ds, 'gender': gender, 'name': name, 'num': num, 'state': state,
-        #'sum_boys': sum_boys, 'sum_girls': sum_girls, 'num_california': num_california}
-
+        
         metrics_by_name: Dict[str, SqlMetric] = self._get_metrics_by_name()
-        # {'count': <superset.connectors.sqla.models.SqlMetric object at 0x7f7fb86e8490>,
-        #'sum__num': <superset.connectors.sqla.models.SqlMetric object at 0x7f7fb86e8550>}
-        # those objects.name -> SUM(NUM),
-        # those.objects.data -> {'is_certified': False, 'certified_by': None,
-        # 'certification_details': None, 'id': 10,
-        #'metric_name': 'sum__num', 'verbose_name': None, 'description': None,
-        #'expression': 'SUM(num)', 'warning_text': None, 'd3format': None}
 
         metric_expressions = self._get_metric_expressions(
             metrics, columns_by_name, metrics_by_name
@@ -1379,26 +1421,12 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         main_metric_expression = self._get_main_metric_expression(metric_expressions)
         # sum(num)
 
-        """
-             sip  False
-             metrics  [{'aggregate': 'SUM', 'column': {'column_name': 'num', 'type': 'BIGINT'},
-                 'expressionType': 'SIMPLE', 'label': 'Births', 'optionName': 'metric_11'}]
-             cols  None
-             groupby  ['name', 'state']
-             granularity: ds
-             extras: {'druid_time_origin': '', 'having': '', 'having_druid': [], 'time_grain_sqla': 'P1D',
-                'time_range_endpoints': (<TimeRangeEndpoint.INCLUSIVE: 'inclusive'>,
-                <TimeRangeEndpoint.EXCLUSIVE: 'exclusive'>), 'where': ''}
-
-
-        """
-
         (
             outer,
             select_expressions,
             metric_expressions,
             groupby_expressions,
-        ) = self.get_expressions(
+        ) = self._get_expressions(
             is_sip_38,
             metrics,
             columns,
@@ -1412,12 +1440,11 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
         # OrderedDict([('name', <sqlalchemy.sql.elements.Label object at 0x7f19f2823f50>),
         # ('state', <sqlalchemy.sql.elements.Label object at 0x7f19f284b190>)])
 
-        # TODO: seperate select_expr, groupby_expressions seperately
         (
             time_filters,
             select_expressions,
-            groupby_expressions_with_timestamp,
-        ) = self.get_time_filters(
+            groupby_expressions_with_ts,
+        ) = self._get_temporal_info(
             granularity,
             extras.get("time_grain_sqla"),
             select_expressions,
@@ -1434,40 +1461,31 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             metric_expressions  # both elements.Lable of cols[name, state]
         )
 
-        labels_expected = self.get_expected_labels_from_select(
+        labels_expected = self._get_expected_labels_from_select(
             select_expressions
         )  # ['name', 'state', 'Births']
 
         # SELECT EXPRESSION
         select_expressions = db_engine_spec.make_select_compatible(
-            groupby_expressions_with_timestamp.values(), select_expressions
+            groupby_expressions_with_ts.values(), select_expressions
         )  # elements.Lable of cols[name, state, Births]
 
         query = sa.select(select_expressions)
 
         # GROUP BY EXPRESSION
-        # TODO: get groupby expression only
-        # SELECT name AS name, state AS state, sum(num) AS "Births
-        query = self.get_query_with_group_by_expression(
-            query, is_sip_38, metrics, columns, groupby_expressions_with_timestamp
-        )
         # SELECT name AS name, state AS state, sum(num) AS "Births" GROUP BY name, state
-
+        if (is_sip_38 and metrics) or (not is_sip_38 and not columns):
+            query = query.group_by(*groupby_expressions_with_ts.values())
+        
+        #get source object: table/arbitrary_query
         query_table = self.get_from_clause(
             template_processor
-        )  # sqlalchemu table object of table birth_names
+        )
 
         # WHERE AND HAVING EXPRESSION
-        where_clause, having_clause = self.get_where_and_having_clause(
-            filter,
-            columns_by_name,
-            template_processor,
-            granularity,
-            extras.get("where"),
-            extras.get("having"),
-            time_filters,
-        )
-        print("where cl ", where_clause)
+        where_clause = self._get_where_clause(filter, columns_by_name, template_processor,
+            extras.get("where"), granularity, time_filters)
+        having_clause = self._get_having_clause(extras.get("having"), template_processor)
         query.where(and_(*where_clause))
         query.having(and_(*having_clause))
 
@@ -1484,12 +1502,6 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             query = query.offset(row_offset)
 
         # ON AND WHERE CLAUSE ON JOINED TABLES IF REQUIRED
-        """
-        is_timeseries: false
-            timeseries_limit: 0,
-            time_groupby_inline: false
-        """
-        
         prequeries: List[str] = []
         if (
             is_timeseries  # pylint: disable=too-many-boolean-expressions
@@ -1497,7 +1509,7 @@ class SqlaTable(  # pylint: disable=too-many-public-methods,too-many-instance-at
             and not time_groupby_inline
             and ((is_sip_38 and columns) or (not is_sip_38 and groupby))
         ):
-            query_table, where_clause, prequeries = self._get_where_clause(
+            query_table, where_clause, prequeries = self._get_timeseries_params(
                 timeseries_limit,
                 is_sip_38,
                 columns,
