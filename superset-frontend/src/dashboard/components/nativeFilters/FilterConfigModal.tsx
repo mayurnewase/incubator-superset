@@ -19,21 +19,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { findLastIndex, uniq } from 'lodash';
 import shortid from 'shortid';
-import { DeleteFilled, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
+import Icon from 'src/components/Icon';
 import { styled, t } from '@superset-ui/core';
 import { Form } from 'src/common/components';
 import { StyledModal } from 'src/common/components/Modal';
 import Button from 'src/components/Button';
 import { LineEditableTabs } from 'src/common/components/Tabs';
-import { DASHBOARD_ROOT_ID } from 'src/dashboard/util/constants';
 import { usePrevious } from 'src/common/hooks/usePrevious';
 import ErrorBoundary from 'src/components/ErrorBoundary';
 import { useFilterConfigMap, useFilterConfiguration } from './state';
 import FilterConfigForm from './FilterConfigForm';
 import { FilterConfiguration, NativeFiltersForm } from './types';
+import { CancelConfirmationAlert } from './CancelConfirmationAlert';
 
 // how long to show the "undo" button when removing a filter
 const REMOVAL_DELAY_SECS = 5;
+const FILTER_WIDTH = 200;
 
 const StyledModalBody = styled.div`
   display: flex;
@@ -59,16 +61,21 @@ const StyledSpan = styled.span`
 const FilterTabs = styled(LineEditableTabs)`
   // extra selector specificity:
   &.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
-    min-width: 200px;
-    margin-left: 0;
-    padding: 0 ${({ theme }) => theme.gridUnit * 2}px
-      ${({ theme }) => theme.gridUnit}px;
+    min-width: ${FILTER_WIDTH}px;
+    margin: 0 ${({ theme }) => theme.gridUnit * 2}px 0 0;
+    padding: ${({ theme }) => theme.gridUnit}px
+      ${({ theme }) => theme.gridUnit * 2}px;
 
     &:hover,
     &-active {
       color: ${({ theme }) => theme.colors.grayscale.dark1};
       border-radius: ${({ theme }) => theme.borderRadius}px;
-      background-color: ${({ theme }) => theme.colors.grayscale.light2};
+      background-color: ${({ theme }) => theme.colors.secondary.light4};
+
+      .ant-tabs-tab-remove > svg {
+        color: ${({ theme }) => theme.colors.grayscale.base};
+        transition: all 0.3s;
+      }
     }
   }
 
@@ -85,8 +92,6 @@ const FilterTabTitle = styled.span`
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  padding: ${({ theme }) => theme.gridUnit}px
-    ${({ theme }) => theme.gridUnit * 2}px 0 0;
 
   @keyframes tabTitleRemovalAnimation {
     0%,
@@ -107,6 +112,12 @@ const FilterTabTitle = styled.span`
   }
 `;
 
+const StyledFilterTitle = styled.span`
+  width: ${FILTER_WIDTH}px;
+  white-space: normal;
+  color: ${({ theme }) => theme.colors.grayscale.dark1};
+`;
+
 const StyledAddFilterBox = styled.div`
   color: ${({ theme }) => theme.colors.primary.dark1};
   text-align: left;
@@ -118,6 +129,10 @@ const StyledAddFilterBox = styled.div`
   &:hover {
     color: ${({ theme }) => theme.colors.primary.base};
   }
+`;
+
+const StyledTrashIcon = styled(Icon)`
+  color: ${({ theme }) => theme.colors.grayscale.light3};
 `;
 
 type FilterRemoval =
@@ -174,6 +189,8 @@ export function FilterConfigModal({
   const [removedFilters, setRemovedFilters] = useState<
     Record<string, FilterRemoval>
   >({});
+
+  const [saveAlertVisible, setSaveAlertVisible] = useState<boolean>(false);
 
   // brings back a filter that was previously removed ("Undo")
   const restoreFilter = useCallback(
@@ -232,6 +249,7 @@ export function FilterConfigModal({
     const newFilterId = generateFilterId();
     setNewFilterIds([...newFilterIds, newFilterId]);
     setCurrentFilterId(newFilterId);
+    setSaveAlertVisible(false);
   }, [newFilterIds, setCurrentFilterId]);
 
   // if this is a "create" modal rather than an "edit" modal,
@@ -249,6 +267,7 @@ export function FilterConfigModal({
     setNewFilterIds([]);
     setCurrentFilterId(getInitialCurrentFilterId());
     setRemovedFilters({});
+    setSaveAlertVisible(false);
   }, [form, getInitialCurrentFilterId]);
 
   const completeFilterRemoval = (filterId: string) => {
@@ -273,6 +292,7 @@ export function FilterConfigModal({
         ...removedFilters,
         [filterId]: { isPending: true, timerId },
       }));
+      setSaveAlertVisible(false);
     } else if (action === 'add') {
       addFilter();
     }
@@ -280,7 +300,7 @@ export function FilterConfigModal({
 
   function getFilterTitle(id: string) {
     return (
-      formValues.filters[id]?.name ?? filterConfigMap[id]?.name ?? 'New Filter'
+      formValues.filters[id]?.name ?? filterConfigMap[id]?.name ?? 'New filter'
     );
   }
 
@@ -347,7 +367,7 @@ export function FilterConfigModal({
 
       return formValues;
     } catch (error) {
-      console.warn('Filter Configuration Failed:', error);
+      console.warn('Filter configuration failed:', error);
 
       if (!error.errorFields || !error.errorFields.length) return null; // not a validation error
 
@@ -382,7 +402,7 @@ export function FilterConfigModal({
         return {
           id,
           name: formInputs.name,
-          type: 'text',
+          filterType: formInputs.filterType,
           // for now there will only ever be one target
           targets: [
             {
@@ -396,10 +416,7 @@ export function FilterConfigModal({
           cascadeParentIds: formInputs.parentFilter
             ? [formInputs.parentFilter.value]
             : [],
-          scope: {
-            rootPath: [DASHBOARD_ROOT_ID],
-            excluded: [],
-          },
+          scope: formInputs.scope,
           inverseSelection: !!formInputs.inverseSelection,
           isInstant: !!formInputs.isInstant,
           allowsMultipleValues: !!formInputs.allowsMultipleValues,
@@ -418,32 +435,89 @@ export function FilterConfigModal({
     validateForm,
   ]);
 
-  const handleCancel = () => {
+  const confirmCancel = () => {
     resetForm();
     onCancel();
+  };
+
+  const unsavedFiltersIds = newFilterIds.filter(id => !removedFilters[id]);
+
+  const getUnsavedFilterNames = (): string => {
+    const unsavedFiltersNames = unsavedFiltersIds.map(
+      id => `"${getFilterTitle(id)}"`,
+    );
+
+    if (unsavedFiltersNames.length === 0) {
+      return '';
+    }
+
+    if (unsavedFiltersNames.length === 1) {
+      return unsavedFiltersNames[0];
+    }
+
+    const lastFilter = unsavedFiltersNames.pop();
+
+    return `${unsavedFiltersNames.join(', ')} ${t('and')} ${lastFilter}`;
+  };
+
+  const handleCancel = () => {
+    if (unsavedFiltersIds.length > 0) {
+      setSaveAlertVisible(true);
+    } else {
+      confirmCancel();
+    }
+  };
+
+  const renderFooterElements = (): React.ReactNode[] => {
+    if (saveAlertVisible) {
+      return [
+        <CancelConfirmationAlert
+          title={`${unsavedFiltersIds.length} ${t('unsaved filters')}`}
+          onConfirm={confirmCancel}
+          onDismiss={() => setSaveAlertVisible(false)}
+        >
+          {t(`Are you sure you want to cancel?`)} {getUnsavedFilterNames()}{' '}
+          {t(`will not be saved.`)}
+        </CancelConfirmationAlert>,
+      ];
+    }
+
+    return [
+      <Button
+        key="cancel"
+        buttonStyle="secondary"
+        data-test="native-filter-modal-cancel-button"
+        onClick={handleCancel}
+      >
+        {t('Cancel')}
+      </Button>,
+      <Button
+        key="submit"
+        buttonStyle="primary"
+        onClick={onOk}
+        data-test="native-filter-modal-save-button"
+      >
+        {t('Save')}
+      </Button>,
+    ];
   };
 
   return (
     <StyledModal
       visible={isOpen}
-      title={t('Filter Configuration and Scoping')}
+      title={t('Filter configuration and scoping')}
       width="55%"
+      destroyOnClose
       onCancel={handleCancel}
       onOk={onOk}
       centered
       data-test="filter-modal"
-      footer={[
-        <Button key="cancel" buttonStyle="secondary" onClick={handleCancel}>
-          {t('Cancel')}
-        </Button>,
-        <Button key="submit" buttonStyle="primary" onClick={onOk}>
-          {t('Save')}
-        </Button>,
-      ]}
+      footer={renderFooterElements()}
     >
       <ErrorBoundary>
         <StyledModalBody>
           <StyledForm
+            preserve={false}
             form={form}
             onValuesChange={(changes, values: NativeFiltersForm) => {
               if (
@@ -455,6 +529,7 @@ export function FilterConfigModal({
                 // we only need to set this if a name changed
                 setFormValues(values);
               }
+              setSaveAlertVisible(false);
             }}
             layout="vertical"
           >
@@ -465,7 +540,8 @@ export function FilterConfigModal({
               onEdit={onTabEdit}
               addIcon={
                 <StyledAddFilterBox>
-                  <PlusOutlined /> <span>{t('Add Filter')}</span>
+                  <PlusOutlined />{' '}
+                  <span data-test="add-filter-button">{t('Add filter')}</span>
                 </StyledAddFilterBox>
               }
             >
@@ -475,14 +551,15 @@ export function FilterConfigModal({
                     <FilterTabTitle
                       className={removedFilters[id] ? 'removed' : ''}
                     >
-                      <div>
+                      <StyledFilterTitle>
                         {removedFilters[id]
                           ? t('(Removed)')
                           : getFilterTitle(id)}
-                      </div>
+                      </StyledFilterTitle>
                       {removedFilters[id] && (
                         <StyledSpan
                           role="button"
+                          data-test="undo-button"
                           tabIndex={0}
                           onClick={() => restoreFilter(id)}
                         >
@@ -492,7 +569,13 @@ export function FilterConfigModal({
                     </FilterTabTitle>
                   }
                   key={id}
-                  closeIcon={removedFilters[id] ? <></> : <DeleteFilled />}
+                  closeIcon={
+                    removedFilters[id] ? (
+                      <></>
+                    ) : (
+                      <StyledTrashIcon name="trash" />
+                    )
+                  }
                 >
                   <FilterConfigForm
                     form={form}

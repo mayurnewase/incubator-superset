@@ -33,7 +33,7 @@ import QueryHistory from './QueryHistory';
 import ResultSet from './ResultSet';
 import {
   STATUS_OPTIONS,
-  STATE_BSSTYLE_MAP,
+  STATE_TYPE_MAP,
   LOCALSTORAGE_MAX_QUERY_AGE_MS,
 } from '../constants';
 
@@ -86,24 +86,8 @@ const StyledPane = styled.div`
 export class SouthPane extends React.PureComponent {
   constructor(props) {
     super(props);
-    this.state = {
-      height: props.height,
-    };
     this.southPaneRef = React.createRef();
-    this.getSouthPaneHeight = this.getSouthPaneHeight.bind(this);
     this.switchTab = this.switchTab.bind(this);
-  }
-
-  UNSAFE_componentWillReceiveProps() {
-    // south pane expands the entire height of the tab content on mount
-    this.setState({ height: this.getSouthPaneHeight() });
-  }
-
-  // One layer of abstraction for easy spying in unit tests
-  getSouthPaneHeight() {
-    return this.southPaneRef.current
-      ? this.southPaneRef.current.clientHeight
-      : 0;
   }
 
   switchTab(id) {
@@ -113,15 +97,12 @@ export class SouthPane extends React.PureComponent {
   render() {
     if (this.props.offline) {
       return (
-        <Label
-          className="m-r-3"
-          bsStyle={STATE_BSSTYLE_MAP[STATUS_OPTIONS.offline]}
-        >
+        <Label className="m-r-3" type={STATE_TYPE_MAP[STATUS_OPTIONS.offline]}>
           {STATUS_OPTIONS.offline}
         </Label>
       );
     }
-    const innerTabContentHeight = this.state.height - TAB_HEIGHT;
+    const innerTabContentHeight = this.props.height - TAB_HEIGHT;
     let latestQuery;
     const { props } = this;
     if (props.editorQueries.length > 0) {
@@ -193,7 +174,7 @@ export class SouthPane extends React.PureComponent {
           <Tabs.TabPane tab={t('Results')} key="Results">
             {results}
           </Tabs.TabPane>
-          <Tabs.TabPane tab={t('Query History')} key="History">
+          <Tabs.TabPane tab={t('Query history')} key="History">
             <QueryHistory
               queries={props.editorQueries}
               actions={props.actions}

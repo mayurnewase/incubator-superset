@@ -25,7 +25,7 @@ import React, {
 } from 'react';
 import { Alert, FormControl, FormControlProps } from 'react-bootstrap';
 import { SupersetClient, t, styled } from '@superset-ui/core';
-import TableView from 'src/components/TableView';
+import TableView, { EmptyWrapperType } from 'src/components/TableView';
 import StyledModal from 'src/common/components/Modal';
 import Button from 'src/components/Button';
 import { useListViewResource } from 'src/views/CRUD/hooks';
@@ -120,9 +120,9 @@ const ChangeDatasourceModal: FunctionComponent<ChangeDatasourceModalProps> = ({
 
   useDebouncedEffect(
     () => {
-      if (filter) {
-        fetchData({
-          ...emptyRequest,
+      fetchData({
+        ...emptyRequest,
+        ...(filter && {
           filters: [
             {
               id: 'table_name',
@@ -130,10 +130,10 @@ const ChangeDatasourceModal: FunctionComponent<ChangeDatasourceModalProps> = ({
               value: filter,
             },
           ],
-        });
-      }
+        }),
+      });
     },
-    1000,
+    300,
     [filter],
   );
 
@@ -142,9 +142,6 @@ const ChangeDatasourceModal: FunctionComponent<ChangeDatasourceModalProps> = ({
       if (searchRef && searchRef.current) {
         searchRef.current.focus();
       }
-
-      // Fetch initial datasets for tableview
-      await fetchData(emptyRequest);
     };
 
     if (show) {
@@ -223,7 +220,10 @@ const ChangeDatasourceModal: FunctionComponent<ChangeDatasourceModalProps> = ({
       show={show}
       onHide={onHide}
       responsive
-      title={t('Change Dataset')}
+      title={t('Change dataset')}
+      width={confirmChange ? '432px' : ''}
+      height={confirmChange ? 'auto' : '480px'}
+      hideFooter={!confirmChange}
       footer={
         <>
           {confirmChange && (
@@ -268,6 +268,8 @@ const ChangeDatasourceModal: FunctionComponent<ChangeDatasourceModalProps> = ({
                 data={renderTableView()}
                 pageSize={20}
                 className="table-condensed"
+                emptyWrapperType={EmptyWrapperType.Small}
+                scrollTable
               />
             )}
           </>

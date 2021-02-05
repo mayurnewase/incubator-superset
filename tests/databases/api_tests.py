@@ -21,6 +21,8 @@ import json
 from io import BytesIO
 from unittest import mock
 from zipfile import is_zipfile, ZipFile
+from tests.fixtures.world_bank_dashboard import load_world_bank_dashboard_with_slices
+from tests.fixtures.birth_names_dashboard import load_birth_names_dashboard_with_slices
 
 import prison
 import pytest
@@ -135,7 +137,6 @@ class TestDatabaseApi(SupersetTestCase):
             "explore_database_id",
             "expose_in_sqllab",
             "force_ctas_schema",
-            "function_names",
             "id",
         ]
         self.assertGreater(response["count"], 0)
@@ -199,7 +200,7 @@ class TestDatabaseApi(SupersetTestCase):
         database_data = {
             "database_name": "test-create-database",
             "sqlalchemy_uri": example_db.sqlalchemy_uri_decrypted,
-            "server_cert": ssl_certificate,
+            "server_cert": None,
             "extra": json.dumps(extra),
         }
 
@@ -559,6 +560,7 @@ class TestDatabaseApi(SupersetTestCase):
         }
         self.assertEqual(response, expected_response)
 
+    @pytest.mark.usefixtures("load_birth_names_dashboard_with_slices")
     def test_get_table_metadata(self):
         """
         Database API: Test get table metadata info
@@ -586,7 +588,8 @@ class TestDatabaseApi(SupersetTestCase):
         assert rv.status_code == 200
         assert "can_read" in data["permissions"]
         assert "can_write" in data["permissions"]
-        assert len(data["permissions"]) == 2
+        assert "can_function_names" in data["permissions"]
+        assert len(data["permissions"]) == 3
 
     def test_get_invalid_database_table_metadata(self):
         """
@@ -622,6 +625,7 @@ class TestDatabaseApi(SupersetTestCase):
         rv = self.client.get(uri)
         self.assertEqual(rv.status_code, 404)
 
+    @pytest.mark.usefixtures("load_birth_names_dashboard_with_slices")
     def test_get_select_star(self):
         """
         Database API: Test get select star
@@ -758,7 +762,7 @@ class TestDatabaseApi(SupersetTestCase):
             "extra": json.dumps(extra),
             "impersonate_user": False,
             "sqlalchemy_uri": example_db.safe_sqlalchemy_uri(),
-            "server_cert": ssl_certificate,
+            "server_cert": None,
         }
         url = "api/v1/database/test_connection"
         rv = self.post_assert_metric(url, data, "test_connection")
@@ -843,7 +847,10 @@ class TestDatabaseApi(SupersetTestCase):
         app.config["PREVENT_UNSAFE_DB_CONNECTIONS"] = False
 
     @pytest.mark.usefixtures(
-        "load_unicode_dashboard_with_position", "load_energy_table_with_slice"
+        "load_unicode_dashboard_with_position",
+        "load_energy_table_with_slice",
+        "load_world_bank_dashboard_with_slices",
+        "load_birth_names_dashboard_with_slices",
     )
     def test_get_database_related_objects(self):
         """
@@ -1118,3 +1125,20 @@ class TestDatabaseApi(SupersetTestCase):
 
         db.session.delete(database)
         db.session.commit()
+
+    @mock.patch("superset.db_engine_specs.base.BaseEngineSpec.get_function_names",)
+    def test_function_names(self, mock_get_function_names):
+        example_db = get_example_database()
+        if example_db.backend in {"hive", "presto"}:
+            return
+
+        mock_get_function_names.return_value = ["AVG", "MAX", "SUM"]
+
+        self.login(username="admin")
+        uri = "api/v1/database/1/function_names/"
+
+        rv = self.client.get(uri)
+        response = json.loads(rv.data.decode("utf-8"))
+
+        assert rv.status_code == 200
+        assert response == {"function_names": ["AVG", "MAX", "SUM"]}

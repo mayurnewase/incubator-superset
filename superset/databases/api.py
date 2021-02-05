@@ -29,7 +29,7 @@ from sqlalchemy.exc import NoSuchTableError, OperationalError, SQLAlchemyError
 
 from superset import event_logger
 from superset.commands.exceptions import CommandInvalidError
-from superset.commands.importers.v1.utils import remove_root
+from superset.commands.importers.v1.utils import get_contents_from_bundle
 from superset.constants import MODEL_API_RW_METHOD_PERMISSION_MAP, RouteMethod
 from superset.databases.commands.create import CreateDatabaseCommand
 from superset.databases.commands.delete import DeleteDatabaseCommand
@@ -53,6 +53,7 @@ from superset.databases.decorators import check_datasource_access
 from superset.databases.filters import DatabaseFilter
 from superset.databases.schemas import (
     database_schemas_query_schema,
+    DatabaseFunctionNamesResponse,
     DatabasePostSchema,
     DatabasePutSchema,
     DatabaseRelatedObjectsResponse,
@@ -83,6 +84,7 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
         "schemas",
         "test_connection",
         "related_objects",
+        "function_names",
     }
     resource_name = "database"
     class_permission_name = "Database"
@@ -126,7 +128,6 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
         "explore_database_id",
         "expose_in_sqllab",
         "force_ctas_schema",
-        "function_names",
         "id",
     ]
     add_columns = [
@@ -170,6 +171,7 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     }
     openapi_spec_tag = "Database"
     openapi_spec_component_schemas = (
+        DatabaseFunctionNamesResponse,
         DatabaseRelatedObjectsResponse,
         DatabaseTestConnectionSchema,
         TableMetadataResponseSchema,
@@ -181,7 +183,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.post",
+        log_to_statsd=False,
+    )
     def post(self) -> Response:
         """Creates a new Database
         ---
@@ -244,7 +249,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.put",
+        log_to_statsd=False,
+    )
     def put(  # pylint: disable=too-many-return-statements, arguments-differ
         self, pk: int
     ) -> Response:
@@ -318,7 +326,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}" f".delete",
+        log_to_statsd=False,
+    )
     def delete(self, pk: int) -> Response:  # pylint: disable=arguments-differ
         """Deletes a Database
         ---
@@ -369,7 +380,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @safe
     @rison(database_schemas_query_schema)
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}" f".schemas",
+        log_to_statsd=False,
+    )
     def schemas(self, pk: int, **kwargs: Any) -> FlaskResponse:
         """Get all schemas from a database
         ---
@@ -424,7 +438,11 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @check_datasource_access
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
+        f".table_metadata",
+        log_to_statsd=False,
+    )
     def table_metadata(
         self, database: Database, table_name: str, schema_name: str
     ) -> FlaskResponse:
@@ -481,7 +499,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @check_datasource_access
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.select_star",
+        log_to_statsd=False,
+    )
     def select_star(
         self, database: Database, table_name: str, schema_name: Optional[str] = None
     ) -> FlaskResponse:
@@ -538,7 +559,11 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
+        f".test_connection",
+        log_to_statsd=False,
+    )
     def test_connection(  # pylint: disable=too-many-return-statements
         self,
     ) -> FlaskResponse:
@@ -588,7 +613,11 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
+        f".related_objects",
+        log_to_statsd=False,
+    )
     def related_objects(self, pk: int) -> Response:
         """Get charts and dashboards count associated to a database
         ---
@@ -615,8 +644,8 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        dataset = DatabaseDAO.find_by_id(pk)
-        if not dataset:
+        database = DatabaseDAO.find_by_id(pk)
+        if not database:
             return self.response_404()
         data = DatabaseDAO.get_related_objects(pk)
         charts = [
@@ -647,7 +676,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @rison(get_export_ids_schema)
-    @event_logger.log_this_with_context(log_to_statsd=False)
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.export",
+        log_to_statsd=False,
+    )
     def export(self, **kwargs: Any) -> Response:
         """Export database(s) with associated datasets
         ---
@@ -703,6 +735,10 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.import_",
+        log_to_statsd=False,
+    )
     def import_(self) -> Response:
         """Import database(s) with associated datasets
         ---
@@ -744,10 +780,7 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
         if not upload:
             return self.response_400()
         with ZipFile(upload) as bundle:
-            contents = {
-                remove_root(file_name): bundle.read(file_name).decode()
-                for file_name in bundle.namelist()
-            }
+            contents = get_contents_from_bundle(bundle)
 
         passwords = (
             json.loads(request.form["passwords"])
@@ -768,3 +801,43 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
         except DatabaseImportError as exc:
             logger.exception("Import database failed")
             return self.response_500(message=str(exc))
+
+    @expose("/<int:pk>/function_names/", methods=["GET"])
+    @protect()
+    @safe
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
+        f".function_names",
+        log_to_statsd=False,
+    )
+    def function_names(self, pk: int) -> Response:
+        """Get function names supported by a database
+        ---
+        get:
+          description:
+            Get function names supported by a database
+          parameters:
+          - in: path
+            name: pk
+            schema:
+              type: integer
+          responses:
+            200:
+            200:
+              description: Query result
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/DatabaseFunctionNamesResponse"
+            401:
+              $ref: '#/components/responses/401'
+            404:
+              $ref: '#/components/responses/404'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        database = DatabaseDAO.find_by_id(pk)
+        if not database:
+            return self.response_404()
+        return self.response(200, function_names=database.function_names,)
