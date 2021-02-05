@@ -111,6 +111,7 @@ export function setControlValue(
 
 export const SET_EXPLORE_CONTROLS = 'UPDATE_EXPLORE_CONTROLS';
 export function setExploreControls(formData: QueryFormData) {
+
   return { type: SET_EXPLORE_CONTROLS, formData };
 }
 

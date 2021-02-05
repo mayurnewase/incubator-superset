@@ -148,9 +148,16 @@ const legacyChartDataRequest = async (
     'GET' && isFeatureEnabled(FeatureFlag.CLIENT_CACHE)
       ? SupersetClient.get
       : SupersetClient.post;
+
+  //clientMethod(querySettings).then((response) => {
+  //  console.log("legacy api server gave ", response);
+  //});
+  const r = await clientMethod(querySettings).then(({json}) => ({result:[json]}))
+
   return clientMethod(querySettings).then(({ json }) =>
     // Make the legacy endpoint return a payload that corresponds to the
     // V1 chart data endpoint response signature.
+    //console.log("clientmethod gave ", json)
     ({
       result: [json],
     }),
@@ -219,7 +226,8 @@ export async function getChartDataRequest({
   }
 
   if (shouldUseLegacyApi(formData)) {
-    return legacyChartDataRequest(
+    console.log("using legacy api")
+    const legacyResponse = legacyChartDataRequest(
       formData,
       resultFormat,
       resultType,
@@ -227,14 +235,27 @@ export async function getChartDataRequest({
       method,
       querySettings,
     );
+    console.log("legacy api response ", await legacyResponse)
+
+    return legacyResponse
   }
-  return v1ChartDataRequest(
+  const a = await v1ChartDataRequest(
+
     formData,
     resultFormat,
     resultType,
     force,
     querySettings,
   );
+
+  return v1ChartDataRequest(
+
+    formData,
+    resultFormat,
+    resultType,
+    force,
+    querySettings,
+  );;
 }
 
 export function runAnnotationQuery(
@@ -328,6 +349,7 @@ export function renderTriggered(value, key) {
 
 export const UPDATE_QUERY_FORM_DATA = 'UPDATE_QUERY_FORM_DATA';
 export function updateQueryFormData(value, key) {
+  console.trace("tracing actions,update query form data")
   return { type: UPDATE_QUERY_FORM_DATA, value, key };
 }
 
@@ -374,13 +396,14 @@ export function exploreJSON(
 
     const chartDataRequestCaught = chartDataRequest
       .then(response => {
+        console.log("explorejson got from legacy api ", response);
+
         const queriesResponse = response.result;
         if (isFeatureEnabled(FeatureFlag.GLOBAL_ASYNC_QUERIES)) {
           // deal with getChartDataRequest transforming the response data
           const result = 'result' in response ? response.result[0] : response;
           return dispatch(chartUpdateQueued(result, key));
         }
-
         queriesResponse.forEach(resultItem =>
           dispatch(
             logEvent(LOG_ACTIONS_LOAD_CHART, {

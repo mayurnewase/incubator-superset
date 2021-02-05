@@ -489,6 +489,8 @@ function mapStateToProps(state) {
   const form_data = getFormDataFromControls(explore.controls);
   const chartKey = Object.keys(charts)[0];
   const chart = charts[chartKey];
+  console.log("controls in explore view container state ", explore.controls)
+  //console.trace()
   return {
     isDatasourceMetaLoading: explore.isDatasourceMetaLoading,
     datasource: explore.datasource,
@@ -496,6 +498,7 @@ function mapStateToProps(state) {
     datasourceId: explore.datasource_id,
     dashboardId: explore.form_data ? explore.form_data.dashboardId : undefined,
     controls: explore.controls,
+    //controls: {},
     can_overwrite: !!explore.can_overwrite,
     can_add: !!explore.can_add,
     can_download: !!explore.can_download,

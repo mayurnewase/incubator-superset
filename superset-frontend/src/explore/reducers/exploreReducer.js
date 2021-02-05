@@ -26,9 +26,12 @@ import {
 } from '../controlUtils';
 import * as actions from '../actions/exploreActions';
 
+//controls are in state
+//who puts those in there?
 export default function exploreReducer(state = {}, action) {
   const actionHandlers = {
     [DYNAMIC_PLUGIN_CONTROLS_READY]() {
+
       return {
         ...state,
         controls: action.controlsState,
@@ -46,33 +49,7 @@ export default function exploreReducer(state = {}, action) {
         isDatasourceMetaLoading: true,
       };
     },
-    [actions.SET_DATASOURCE]() {
-      const newFormData = { ...state.form_data };
-      if (action.datasource.type !== state.datasource.type) {
-        if (action.datasource.type === 'table') {
-          newFormData.granularity_sqla = action.datasource.granularity_sqla;
-          newFormData.time_grain_sqla = action.datasource.time_grain_sqla;
-          delete newFormData.druid_time_origin;
-          delete newFormData.granularity;
-        } else {
-          newFormData.druid_time_origin = action.datasource.druid_time_origin;
-          newFormData.granularity = action.datasource.granularity;
-          delete newFormData.granularity_sqla;
-          delete newFormData.time_grain_sqla;
-        }
-      }
-      const newState = {
-        ...state,
-        datasource: action.datasource,
-        datasource_id: action.datasource.id,
-        datasource_type: action.datasource.type,
-      };
-      return {
-        ...newState,
-        form_data: newFormData,
-        controls: getControlsState(newState, newFormData),
-      };
-    },
+
     [actions.FETCH_DATASOURCES_STARTED]() {
       return {
         ...state,
@@ -134,27 +111,14 @@ export default function exploreReducer(state = {}, action) {
         },
       };
     },
-    [actions.SET_EXPLORE_CONTROLS]() {
-      return {
-        ...state,
-        controls: getControlsState(state, action.formData),
-      };
-    },
+
     [actions.UPDATE_CHART_TITLE]() {
       return {
         ...state,
         sliceName: action.sliceName,
       };
     },
-    [actions.RESET_FIELDS]() {
-      return {
-        ...state,
-        controls: getControlsState(
-          state,
-          getFormDataFromControls(state.controls),
-        ),
-      };
-    },
+
     [actions.CREATE_NEW_SLICE]() {
       return {
         ...state,
@@ -179,5 +143,6 @@ export default function exploreReducer(state = {}, action) {
   if (action.type in actionHandlers) {
     return actionHandlers[action.type]();
   }
+
   return state;
 }

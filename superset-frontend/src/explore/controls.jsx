@@ -360,14 +360,6 @@ export const controls = {
     }),
   },
 
-  row_limit: {
-    type: 'SelectControl',
-    freeForm: true,
-    label: t('Row limit'),
-    validators: [legacyValidateInteger],
-    default: 10000,
-    choices: formatSelectOptions(ROW_LIMIT_OPTIONS),
-  },
 
   limit: {
     type: 'SelectControl',

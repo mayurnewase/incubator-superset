@@ -112,7 +112,7 @@ export default function chartReducer(charts = {}, action) {
       const sliceFormData = getFormDataFromControls(action.controlsState);
       return { ...state, sliceFormData };
     },
-    [actions.TRIGGER_QUERY](state) {
+    [actions.TRIGGER_QUERY](state) { //how does it convert data from control to send it to api?
       return {
         ...state,
         triggerQuery: action.value,

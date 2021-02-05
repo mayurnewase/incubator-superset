@@ -135,6 +135,7 @@ class ControlPanelsContainer extends React.Component {
 
   renderControlPanelSection(section) {
     const { controls } = this.props;
+    console.log("render control panel got controls ", controls);
 
     const hasErrors = section.controlSetRows.some(rows =>
       rows.some(
@@ -156,12 +157,14 @@ class ControlPanelsContainer extends React.Component {
         {section.controlSetRows.map((controlSets, i) => {
           const renderedControls = controlSets
             .map(controlItem => {
+
               if (!controlItem) {
                 // When the item is invalid
                 return null;
               }
               if (React.isValidElement(controlItem)) {
                 // When the item is a React element
+
                 return controlItem;
               }
               if (
@@ -169,6 +172,7 @@ class ControlPanelsContainer extends React.Component {
                 controlItem.config &&
                 controlItem.name !== 'datasource'
               ) {
+
                 return this.renderControl(controlItem);
               }
               return null;

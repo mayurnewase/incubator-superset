@@ -27,6 +27,7 @@ import {
 } from '../controlUtils';
 
 export default function getInitialState(bootstrapData) {
+
   const { form_data: rawFormData } = bootstrapData;
   const { slice } = bootstrapData;
   const sliceName = slice ? slice.slice_name : null;
@@ -37,24 +38,26 @@ export default function getInitialState(bootstrapData) {
       flash_messages: bootstrapData.common.flash_messages,
       conf: bootstrapData.common.conf,
     },
-    rawFormData,
+    //rawFormData,
     filterColumnOpts: [],
     isDatasourceMetaLoading: false,
     isStarred: false,
   };
+
   const controls = getControlsState(bootstrappedState, rawFormData);
+
   bootstrappedState.controls = controls;
 
   // apply initial mapStateToProps for all controls, must execute AFTER
   // bootstrappedState has initialized `controls`. Order of execution is not
   // guaranteed, so controls shouldn't rely on the each other's mapped state.
   Object.entries(controls).forEach(([key, controlState]) => {
-    controls[key] = applyMapStateToPropsToControl(
+    const result = applyMapStateToPropsToControl(
       controlState,
       bootstrappedState,
     );
+    controls[key] = result;
   });
-
   const sliceFormData = slice
     ? getFormDataFromControls(getControlsState(bootstrapData, slice.form_data))
     : null;

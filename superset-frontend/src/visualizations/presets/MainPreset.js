@@ -73,8 +73,9 @@ export default class MainPreset extends Preset {
       name: 'Legacy charts',
       presets: [new DeckGLChartPreset()],
       plugins: [
-        //new ForceDirectedChartPlugin().configure({ key: 'directed_force' }),
-        new EchartsGraphChartPlugin().configure({key: 'directed_force'})
+        new ForceDirectedChartPlugin().configure({ key: 'directed_force' }),
+        new EchartsPieChartPlugin().configure({key: 'pie'}),
+        new EchartsGraphChartPlugin().configure({key: 'graph_chart'})
       ],
     });
   }

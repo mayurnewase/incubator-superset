@@ -204,6 +204,7 @@ class ChartRenderer extends React.Component {
           }`
         : '';
 
+
     return (
       <SuperChart
         disableErrorBoundary

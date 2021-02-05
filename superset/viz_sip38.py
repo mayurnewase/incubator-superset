@@ -464,6 +464,8 @@ class BaseViz:
             payload["data"] = self.get_data(df)
         if "df" in payload:
             del payload["df"]
+
+        print("\n\n=======payload is ", payload)
         return payload
 
     def get_df_payload(
@@ -1754,10 +1756,13 @@ class DirectedForceViz(BaseViz):
         if len(self.form_data["groupby"]) != 2:
             raise QueryObjectValidationError(_("Pick exactly 2 columns to 'Group By'"))
         qry["metrics"] = [self.form_data["metric"]]
+        assert 0
         return qry
 
     def get_data(self, df: pd.DataFrame) -> VizData:
         df.columns = ["source", "target", "value"]
+        print("data returning ", df)
+        assert 0
         return df.to_dict(orient="records")
 
 

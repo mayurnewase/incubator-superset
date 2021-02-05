@@ -106,7 +106,8 @@ function handleMissingChoice(control) {
   return control;
 }
 
-export function applyMapStateToPropsToControl(controlState, controlPanelState) {
+export function applyMapStateToPropsToControl(controlState, controlPanelState) { //control, boot
+  //track state
   const { mapStateToProps } = controlState;
   let state = { ...controlState };
   let { value } = state; // value is current user-input value
@@ -115,8 +116,10 @@ export function applyMapStateToPropsToControl(controlState, controlPanelState) {
       ...controlState,
       ...mapStateToProps(controlPanelState, controlState),
     };
+
     // `mapStateToProps` may also provide a value
     value = value || state.value;
+
   }
   // If default is a function, evaluate it
   if (typeof state.default === 'function') {
@@ -228,6 +231,7 @@ export const sectionsToRender = function sectionsToRender(
 
 export function getAllControlsState(vizType, datasourceType, state, formData) {
   const controlsState = {};
+
   sectionsToRender(vizType, datasourceType).forEach(section =>
     section.controlSetRows.forEach(fieldsetRow =>
       fieldsetRow.forEach(field => {

@@ -449,6 +449,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
             return self.get_samples(viz_obj)
 
         payload = viz_obj.get_payload()
+        print("\n\n======payload received ", payload)
         return data_payload_response(*viz_obj.payload_json_and_has_error(payload))
 
     @event_logger.log_this
@@ -608,7 +609,8 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
                 form_data=form_data,
                 force=force,
             )
-
+            print("\n\n-----viz is ", viz_obj)
+            print("\napi response with ", self.generate_json(viz_obj, response_type))
             return self.generate_json(viz_obj, response_type)
         except SupersetException as ex:
             return json_error_response(utils.error_msg_from_exception(ex), 400)

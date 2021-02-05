@@ -1443,6 +1443,7 @@ def datetime_parser() -> ParseResults:  # pylint: disable=too-many-locals
 
 
 def datetime_eval(datetime_expression: Optional[str] = None) -> Optional[datetime]:
+    print("\n dt expression ", datetime_expression)
     if datetime_expression:
         try:
             return datetime_parser().parseString(datetime_expression)[0].eval()

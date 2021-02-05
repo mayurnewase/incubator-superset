@@ -1813,6 +1813,7 @@ class DirectedForceViz(BaseViz):
     is_timeseries = False
 
     def query_obj(self) -> QueryObjectDict:
+        print("form data ", self.form_data)
         qry = super().query_obj()
         if len(self.form_data["groupby"]) != 2:
             raise QueryObjectValidationError(_("Pick exactly 2 columns to 'Group By'"))
@@ -1823,6 +1824,7 @@ class DirectedForceViz(BaseViz):
         if df.empty:
             return None
         df.columns = ["source", "target", "value"]
+        print("\nviz get_data gave ", df)
         return df.to_dict(orient="records")
 
 

@@ -42,7 +42,7 @@ export function getControlsState(state, inputFormData) {
   // Getting a list of active control names for the current viz
   const formData = { ...inputFormData };
   const vizType = formData.viz_type || 'table';
-
+  //console.trace();
   handleDeprecatedControls(formData);
 
   const controlsState = getAllControlsState(
@@ -84,6 +84,7 @@ export function applyDefaultFormData(inputFormData) {
 
 const defaultControls = { ...controls };
 Object.keys(controls).forEach(f => {
+
   defaultControls[f].value = controls[f].default;
 });
 

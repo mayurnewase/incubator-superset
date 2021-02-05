@@ -192,6 +192,7 @@ export function getExploreUrl({
       }
     });
   }
+  console.log("explore api url is ", uri.search(search).directory(directory).toString())
   return uri.search(search).directory(directory).toString();
 }
 
@@ -214,6 +215,14 @@ export const buildV1ChartDataPayload = ({
           ...baseQueryObject,
         },
       ]));
+  console.log("build query function is ", buildQuery);
+  console.log("query retrurned ", buildQuery({
+    ...formData,
+    force,
+    result_format: resultFormat,
+    result_type: resultType,
+  }));
+
   return buildQuery({
     ...formData,
     force,

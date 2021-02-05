@@ -115,6 +115,7 @@ export const NVD3TimeSeries = [
       ['metrics'],
       ['adhoc_filters'],
       ['groupby'],
+      ['category'],
       ['limit', 'timeseries_limit_metric'],
       [
         {
