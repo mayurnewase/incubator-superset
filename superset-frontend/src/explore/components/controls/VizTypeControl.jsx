@@ -222,7 +222,7 @@ const VizTypeControl = props => {
       }
       let observer = new IntersectionObserver(callback, options);
 
-    let target = document.getElementsByClassName("tooltiptext")[0]
+    let target = document.getElementsByClassName("tooltiptext")[0] //only set for first chart now.
 
     if (target){
       //console.log("got target")
