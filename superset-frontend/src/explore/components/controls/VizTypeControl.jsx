@@ -27,6 +27,7 @@ import Label from 'src/components/Label';
 import ControlHeader from '../ControlHeader';
 import './VizTypeControl.less';
 import { FeatureFlag, isFeatureEnabled } from '../../../featureFlags';
+import { getFromLocalStorage, setInLocalStorage } from 'src/utils/localStorageHelpers'
 
 const propTypes = {
   description: PropTypes.string,
@@ -49,6 +50,7 @@ const DEFAULT_ORDER = [
   'line',
   'big_number',
   'table',
+  'graph_chart',
   'filter_box',
   'dist_bar',
   'area',
@@ -125,6 +127,7 @@ const VizTypeControl = props => {
 
   const toggleModal = () => {
     setShowModal(prevState => !prevState);
+    setInLocalStorage('chart_notification', notificationInfo)
   };
 
   const changeSearch = event => {
@@ -137,18 +140,24 @@ const VizTypeControl = props => {
     }
   };
 
-  const renderItem = entry => {
+  const renderItem = (entry, notificationInfo) => {
     const { value } = props;
     const { key, value: type } = entry;
     const isSelected = key === value;
+    const showNotification = notificationInfo[key] === undefined ? true: notificationInfo[key];
+    if (key == "graph_chart"){
+      console.log("local gave ", notificationInfo[key], showNotification)
+    }
 
     return (
       <div
         role="button"
         tabIndex={0}
-        className={`viztype-selector-container ${isSelected ? 'selected' : ''}`}
+        className={`viztype-selector-container ${isSelected ? 'selected' : ''} tooltip-parent `}
         onClick={() => onChange(key)}
       >
+        {type.notification && showNotification && <span className={"tooltiptext"} id={key}>{type.notification}</span> }
+
         <img
           alt={type.name}
           width="100%"
@@ -193,13 +202,47 @@ const VizTypeControl = props => {
     )
     .filter(entry => entry.value.name.toLowerCase().includes(filterString));
 
+    const notificationInfo = getFromLocalStorage('chart_notification', {})
+
+      let callback = ((events) => {
+        //console.log("events got ", events)
+        events.forEach((event) => {
+        if (event.isIntersecting){
+
+          const chartType = event.target.id;
+          console.log("viewed event ", event, event.target.id);
+          notificationInfo[chartType] = false
+          //console.log("updated notification ", notificationInfo)
+
+        }
+        })
+        console.log("setting ", notificationInfo)
+
+      })
+
+      let options = {
+        root: null,
+        rootMargin: '0px',
+        threshold: 0.9
+      }
+      let observer = new IntersectionObserver(callback, options);
+
+    let target = document.getElementsByClassName("tooltiptext")[0]
+
+    if (target){
+      //console.log("got target")
+      observer.observe(target);
+    }
+
+
+
   const rows = [];
   for (let i = 0; i <= filteredTypes.length; i += IMAGE_PER_ROW) {
     rows.push(
       <Row data-test="viz-row" key={`row-${i}`}>
         {filteredTypes.slice(i, i + IMAGE_PER_ROW).map(entry => (
           <Col md={12 / IMAGE_PER_ROW} key={`grid-col-${entry.key}`}>
-            {renderItem(entry)}
+            {renderItem(entry, notificationInfo)}
           </Col>
         ))}
       </Row>,
