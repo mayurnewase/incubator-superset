@@ -145,9 +145,6 @@ const VizTypeControl = props => {
     const { key, value: type } = entry;
     const isSelected = key === value;
     const showNotification = notificationInfo[key] === undefined ? true: notificationInfo[key];
-    if (key == "graph_chart"){
-      console.log("local gave ", notificationInfo[key], showNotification)
-    }
 
     return (
       <div
@@ -213,11 +210,9 @@ const VizTypeControl = props => {
           console.log("viewed event ", event, event.target.id);
           notificationInfo[chartType] = false
           //console.log("updated notification ", notificationInfo)
-
         }
         })
-        console.log("setting ", notificationInfo)
-
+        //console.log("setting ", notificationInfo)
       })
 
       let options = {
@@ -233,9 +228,6 @@ const VizTypeControl = props => {
       //console.log("got target")
       observer.observe(target);
     }
-
-
-
   const rows = [];
   for (let i = 0; i <= filteredTypes.length; i += IMAGE_PER_ROW) {
     rows.push(
